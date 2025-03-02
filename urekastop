@@ -1,0 +1,127 @@
+# Copyright (c) farm-ng, inc.
+#
+# Licensed under the Amiga Development Kit License (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://github.com/farm-ng/amiga-dev-kit/blob/main/LICENSE
+
+
+
+import argparse
+import asyncio
+from pathlib import Path
+import cv2
+import numpy as np
+from farm_ng.canbus.canbus_pb2 import Twist2d
+from farm_ng.core.event_client import EventClient
+from farm_ng.core.event_service_pb2 import EventServiceConfig
+from farm_ng.core.events_file_reader import proto_from_json_file
+from numpy import clip
+
+# NOTE: be careful with these values, they are in m/s and rad/s
+MAX_LINEAR_VELOCITY_MPS = 0.5
+MAX_ANGULAR_VELOCITY_RPS = 0.5
+VELOCITY_INCREMENT = 0.05
+
+# YOLO configuration
+YOLO_CONFIG = "yolov4-tiny.cfg"
+YOLO_WEIGHTS = "yolov4-tiny.weights"
+YOLO_CLASSES = "coco.names"
+
+# Load YOLO model
+net = cv2.dnn.readNet(YOLO_WEIGHTS, YOLO_CONFIG)
+
+with open(YOLO_CLASSES, 'r') as f:
+    CLASSES = [line.strip() for line in f.readlines()]
+
+
+def detect_person(frame) -> bool:
+    """Detect person using YOLO."""
+    height, width = frame.shape[:2]
+    blob = cv2.dnn.blobFromImage(frame, 1/255.0, (416, 416), swapRB=True, crop=False)
+    net.setInput(blob)
+    outputs = net.forward(net.getUnconnectedOutLayersNames())
+
+    for output in outputs:
+        for detection in output:
+            scores = detection[5:]
+            class_id = np.argmax(scores)
+            confidence = scores[class_id]
+            if confidence > 0.5 and CLASSES[class_id] == "person":
+                return True
+    return False
+
+
+def update_twist_with_key_press(twist: Twist2d, key: int):
+    """Update twist command based on key press."""
+    if key == ord(" "):
+        twist.linear_velocity_x = 0.0
+        twist.linear_velocity_y = 0.0
+        twist.angular_velocity = 0.0
+    elif key == ord("w"):
+        twist.linear_velocity_x += VELOCITY_INCREMENT
+    elif key == ord("s"):
+        twist.linear_velocity_x -= VELOCITY_INCREMENT
+    elif key == ord("a"):
+        twist.angular_velocity += VELOCITY_INCREMENT
+    elif key == ord("d"):
+        twist.angular_velocity -= VELOCITY_INCREMENT
+
+    twist.linear_velocity_x = clip(twist.linear_velocity_x, -MAX_LINEAR_VELOCITY_MPS, MAX_LINEAR_VELOCITY_MPS)
+    twist.angular_velocity = clip(twist.angular_velocity, -MAX_ANGULAR_VELOCITY_RPS, MAX_ANGULAR_VELOCITY_RPS)
+    return twist
+
+
+async def main(canbus_config_path: Path, camera_config_path: Path):
+    twist = Twist2d()
+
+    # Open camera window
+    cv2.namedWindow("Camera Feed", cv2.WINDOW_NORMAL)
+
+    # Load configs
+    canbus_config = proto_from_json_file(canbus_config_path, EventServiceConfig())
+    camera_config = proto_from_json_file(camera_config_path, EventServiceConfig())
+
+    canbus_client = EventClient(canbus_config)
+    camera_client = EventClient(camera_config)
+
+    print(canbus_client.config)
+
+    # Subscribe to the camera stream
+    async for event, message in camera_client.subscribe(camera_config.subscriptions[0], decode=True):
+        frame = cv2.imdecode(np.frombuffer(message.image_data, dtype="uint8"), cv2.IMREAD_UNCHANGED)
+
+        # Show the feed
+        cv2.imshow("Camera Feed", frame)
+
+        # Detect person
+        if detect_person(frame):
+            print("⚠️ Person detected! Stopping the robot.")
+            twist.linear_velocity_x = 0.0
+            twist.angular_velocity = 0.0
+            await canbus_client.request_reply("/twist", twist)
+            cv2.waitKey(1000)  # Pause for 1 second for safety
+            continue  # Skip sending further commands
+
+        # Handle manual key control
+        key = cv2.waitKey(1)
+        if key == ord("q"):
+            break
+
+        twist = update_twist_with_key_press(twist, key)
+        print(f"Sending linear velocity: {twist.linear_velocity_x:.3f}, angular velocity: {twist.angular_velocity:.3f}")
+        await canbus_client.request_reply("/twist", twist)
+
+        await asyncio.sleep(0.05)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Control Amiga robot with keyboard and automatic person detection stop."
+    )
+    parser.add_argument("--canbus-config", type=Path, required=True, help="Path to canbus service config.")
+    parser.add_argument("--camera-config", type=Path, required=True, help="Path to camera service config.")
+    args = parser.parse_args()
+
+    asyncio.run(main(args.canbus_config, args.camera_config))
