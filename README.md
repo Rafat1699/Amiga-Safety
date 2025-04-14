@@ -23,7 +23,7 @@ The Stop Feature monitors real-time video input via a camera client while simult
 - **Virtual Environment** – Using Python’s `venv` to manage dependencies.
 - **wget** – The `wget` utility must be installed for downloading the YOLO model files.
 - **Additional Python packages** – Refer to `requirements.txt` (if provided) for other dependencies.
-
+Note: you have to access the brain using your local pc as the windows will pop up. Also connect the farm-ng-ssh connection for comunicating with the brain.
 ## Installation & Setup
 
 1. **Clone the Repository:**
@@ -31,3 +31,24 @@ The Stop Feature monitors real-time video input via a camera client while simult
    ```bash
    git clone https://github.com/your-github-username/farm-ng-amiga.git
    cd farm-ng-amiga
+
+2. **Setup the enviorment:**
+
+   ```bash
+   cd farm-ng-amiga
+   source venv/bin/activate
+   cd py/examples/camera_client
+   
+3. **Install Dependencies:**
+
+   ```bash
+   pip install opencv-python numpy
+
+4. **Preparing the YOLO MODEL Files:**
+
+   ```bash
+   wget https://github.com/AlexeyAB/darknet/raw/master/cfg/yolov4-tiny.cfg
+   wget https://github.com/AlexeyAB/darknet/releases/download/yolov4/yolov4-tiny.weights
+   wget https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names
+
+   
