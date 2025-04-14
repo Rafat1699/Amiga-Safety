@@ -51,4 +51,9 @@ Note: you have to access the brain using your local pc as the windows will pop u
    wget https://github.com/AlexeyAB/darknet/releases/download/yolov4/yolov4-tiny.weights
    wget https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names
 
+5. **Running the application **
+   ```bash
+   python3 vehicle_twist_person_detect.py --camera-config camera_config.json --canbus-config canbus_config.json
+
+
    
