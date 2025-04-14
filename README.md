@@ -53,7 +53,7 @@ Note: you have to access the brain using your local pc as the windows will pop u
 
 5. **Running the application **
    ```bash
-   python3 vehicle_twist_person_detect.py --camera-config camera_config.json --canbus-config canbus_config.json
+   python3 stop.py --camera-config camera_config.json --canbus-config canbus_config.json
 
 
    
